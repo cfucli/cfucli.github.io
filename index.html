@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cfucli — one shell, two people</title>
+<meta name="description" content="One real terminal that two people on different machines can both watch and type into. No inbound port, no VPN, no admin rights.">
+<link rel="icon" href="assets/cfucli-logo.svg" type="image/svg+xml">
+<link rel="alternate icon" href="assets/cfucli-favicon.ico" sizes="16x16 32x32 64x64">
+<link rel="apple-touch-icon" href="assets/cfucli-256.png">
+<meta property="og:title" content="cfucli">
+<meta property="og:description" content="One real terminal that two people on different machines can both watch and type into.">
+<meta property="og:image" content="https://cfucli.github.io/assets/cfucli-512.png">
+<meta property="og:url" content="https://cfucli.github.io/">
+<meta name="twitter:card" content="summary">
+<style>
+  /* --accent is a button FILL and --link is text on the page background. They cannot be the same
+     value: a red dark enough to carry white button text has too little contrast against a dark
+     page to be a readable link, and a red light enough to be a readable link is too pale to sit
+     under white. So they are separate tokens and each is chosen against its own background. */
+  :root {
+    --bg:#fbfaf8; --surface:#ffffff; --surface-2:#f4f1ec;
+    --text:#1c1a19; --muted:#6b6560;
+    --accent:#b83a2b; --accent-ink:#ffffff; --link:#a63424;
+    --border:#e3ddd4; --code-bg:#2a2523; --code-text:#e8e2dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#15130f; --surface:#1d1a17; --surface-2:#242019;
+      --text:#ece7e0; --muted:#a09890;
+      --accent:#c8442f; --accent-ink:#ffffff; --link:#e8836d;
+      --border:#332d26; --code-bg:#0f0d0b; --code-text:#e8e2dc;
+    }
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  .wrap { max-width:760px; margin:0 auto; padding:0 24px; }
+
+  header { padding:72px 0 8px; }
+  .mark { display:flex; align-items:center; gap:14px; margin-bottom:22px; }
+  .mark img { width:56px; height:56px; display:block; }
+  h1 {
+    font:700 40px/1.1 ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    margin:0; letter-spacing:-0.5px;
+  }
+  .tagline { font-size:21px; line-height:1.45; color:var(--text); margin:0 0 10px; font-weight:400; }
+  .sub { font-size:16px; color:var(--muted); margin:0; }
+
+  section { margin:52px 0; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:1.3px; color:var(--muted); font-weight:600; margin:0 0 18px; }
+  p { margin:0 0 16px; }
+  p:last-child { margin-bottom:0; }
+
+  .actions { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:28px 0 12px; }
+  .btn {
+    display:inline-block; background:var(--accent); color:var(--accent-ink);
+    padding:13px 22px; border-radius:7px; text-decoration:none; font-weight:600; font-size:15px;
+    border:1px solid transparent;
+  }
+  .btn:hover { filter:brightness(1.08); }
+  .btn-ghost { background:transparent; color:var(--text); border-color:var(--border); }
+  .btn-ghost:hover { background:var(--surface-2); filter:none; }
+  .note { font-size:14px; color:var(--muted); margin:0; }
+
+  pre {
+    background:var(--code-bg); color:var(--code-text); padding:18px 20px; border-radius:8px;
+    overflow-x:auto; font:14px/1.7 ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    margin:0 0 16px;
+  }
+  pre .c { color:#9a9088; }
+  code { font:0.92em ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; }
+  /* Tight horizontal padding on purpose. At 6px the pill leaves a gap that reads as a space
+     before a following comma or full stop, which looks like a typo in the prose. */
+  p code, li code { background:var(--surface-2); padding:1px 4px; border-radius:4px; }
+
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:620px) { .cards { grid-template-columns:1fr; } }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:18px 20px; }
+  .card h3 { margin:0 0 6px; font-size:15px; font-weight:600; }
+  .card p { font-size:14.5px; color:var(--muted); margin:0; }
+
+  footer { border-top:1px solid var(--border); margin-top:64px; padding:26px 0 56px; font-size:14px; color:var(--muted); }
+  footer a { color:var(--muted); }
+  a { color:var(--link); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark"><img src="assets/cfucli-logo.svg" alt="" width="56" height="56"><h1>cfucli</h1></div>
+    <p class="tagline">One real terminal that two people on different machines can both watch and type into.</p>
+    <p class="sub">No inbound port. No VPN. No admin rights on either side.</p>
+  </header>
+
+  <section>
+    <p>A shell runs on a machine and a window there shows it. Somebody you invite sees the same shell and can type into it. You are never locked out, you watch every keystroke as it happens, and one key takes control back.</p>
+    <p>It is for the times when explaining the problem over the phone is slower than letting the other person just do it.</p>
+    <p>Both ends dial <em>outbound</em> to a rendezvous, which is what lets it cross NAT and corporate firewalls without anyone opening a port or installing a VPN. When both ends are on the same machine it skips the rendezvous entirely and runs over a loopback socket, so nothing goes near the internet at all.</p>
+  </section>
+
+  <section>
+    <h2>Get it</h2>
+    <div class="actions">
+      <a class="btn" href="https://github.com/cfucli/cfucli/releases/download/v0.1/cfucli-0.1-win-x64.zip">Download for Windows</a>
+      <a class="btn btn-ghost" href="https://github.com/cfucli/cfucli">Source on GitHub</a>
+    </div>
+    <p class="note">Version 0.1, Windows x64, 149&nbsp;MB. Needs JDK&nbsp;25 on your PATH and nothing else. Unzip it anywhere and run the included <code>install.cmd</code> — no step needs an administrator.</p>
+  </section>
+
+  <section>
+    <h2>Two programs</h2>
+    <div class="cards">
+      <div class="card">
+        <h3><code>cfucliapp</code></h3>
+        <p>The window. Share this machine's shell, or join a session someone is sharing. Also the tray manager.</p>
+      </div>
+      <div class="card">
+        <h3><code>cfucli</code></h3>
+        <p>The command line. Drives the same shell with exact exit codes and stdout and stderr kept apart, so an agent can use it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>In thirty seconds</h2>
+    <pre><span class="c"># a shell on this machine, in a window you can watch</span>
+cfucli console --node work
+cfucli exec    --node work "dir"
+cfucli tail    --node work -n 40 -f
+
+<span class="c"># share this machine - it prints an id and a one-time password</span>
+cfucliapp --host
+
+<span class="c"># join what someone else is sharing, then drive it</span>
+cfucli join &lt;id&gt; -p &lt;password&gt; --node far
+cfucli exec --node far "dir"</pre>
+    <p class="note"><code>cfucli guide</code> prints the full manual in the terminal.</p>
+  </section>
+
+  <section>
+    <h2>What it does about safety</h2>
+    <p>The one-time password authenticates an X25519 exchange rather than being the key itself, so every visit gets its own traffic key and a password recovered afterwards opens nothing that was recorded. Frames are AES-256-GCM. The rendezvous carries routing and liveness only — never command text, never output.</p>
+    <p>The host approves a viewer before they are admitted, refuses on silence, and can lock or restrict the far end at any moment without ending the session. A shared session also expires on its own: fifteen minutes idle, four hours absolute. A channel into someone's machine that never closes itself is a backdoor whatever it was built for.</p>
+  </section>
+
+  <footer>
+    <p><a href="https://github.com/cfucli/cfucli">github.com/cfucli/cfucli</a> &nbsp;·&nbsp; <a href="https://github.com/cfucli/cfucli/releases">All releases</a></p>
+  </footer>
+
+</div>
+</body>
+</html>

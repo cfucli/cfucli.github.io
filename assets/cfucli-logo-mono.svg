@@ -1,0 +1,5 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">cfucli logo mono</title>
+  <desc id="desc">A one-colour carved seal with a terminal prompt cut from the center.</desc>
+  <path fill="#000000" fill-rule="evenodd" d="M126 64H900L918 82H960V898L940 918V960H124L104 940H64V126L84 106V64H126ZM230 370H330L560 512L330 654H230L430 512L230 370ZM628 428H800V596H628V428Z"/>
+</svg>

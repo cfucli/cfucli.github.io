@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "status": "not-deployed",
+  "relay_url": null,
+  "fallback_url": null,
+  "message": null,
+  "_comment": "Where cfucli looks for the shared rendezvous. Read the schema in README.md before changing anything here. A client that cannot fetch or cannot parse this file MUST fall back to the defaults compiled into its own binary and carry on working - this file is never a hard dependency. status is 'not-deployed' until the Worker is live; while it says that, clients use their own configured rendezvous and ignore relay_url."
+}
