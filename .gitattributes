@@ -1,0 +1,4 @@
+# Served raw to curl | bash on macOS: a CR at a line end breaks bash (\$'\r': command not found).
+*.sh text eol=lf
+# Served to irm | iex; PowerShell accepts either, CRLF is what Windows tools expect.
+*.ps1 text eol=crlf
