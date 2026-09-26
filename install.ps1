@@ -30,7 +30,11 @@
 
     $release = if ($env:CFUCLI_RELEASE) { $env:CFUCLI_RELEASE } else { 'https://github.com/cfucli/cfucli/releases/latest/download' }
     $jre     = 'https://api.adoptium.net/v3/binary/latest/25/ga/windows/x64/jre/hotspot/normal/eclipse'
-    $home_   = if ($env:CFUCLI_HOME) { $env:CFUCLI_HOME } else { Join-Path $env:USERPROFILE 'cfucli' }
+    # From the profile API, not $env:USERPROFILE: that variable is set at logon and can be missing
+    # from an environment rebuilt from the registry, and a null there fails the whole install.
+    $userHome = [Environment]::GetFolderPath('UserProfile')
+    if (-not $userHome) { $userHome = $env:USERPROFILE }
+    $home_   = if ($env:CFUCLI_HOME) { $env:CFUCLI_HOME } else { Join-Path $userHome 'cfucli' }
     $bin     = Join-Path $home_ 'bin'
     $runtime = Join-Path $home_ 'runtime'
     $versions = Join-Path $home_ 'versions'
@@ -101,7 +105,7 @@
     $cli = Join-Path $target 'cfucli.jar'
     # Nodes keep their state under the user's own cfucli folder whatever folder the jars were
     # installed into - that is where cfucli itself looks (user.home), not CFUCLI_HOME.
-    $state = if ($env:CFUCLI_STATE) { $env:CFUCLI_STATE } else { Join-Path $env:USERPROFILE 'cfucli' }
+    $state = if ($env:CFUCLI_STATE) { $env:CFUCLI_STATE } else { Join-Path $userHome 'cfucli' }
     $runDir = Join-Path $state 'run'
     if (Test-Path $runDir) {
         foreach ($f in Get-ChildItem $runDir -Filter 'node-*.json') {
@@ -146,9 +150,21 @@
         # without deleting anything. Nothing this script did not create is ever removed or edited:
         # an old install is indistinguishable by its files from a folder of other tools that also
         # happens to hold a cfucli.exe, and deleting that would break every tool in it.
-        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        # Raw, and written back with its own registry type. [Environment]::GetEnvironmentVariable
+        # returns the user PATH with %VARIABLES% already expanded, and SetEnvironmentVariable writes
+        # it back as a plain string - so every %USERPROFILE%-style entry would be flattened, or,
+        # where the variable is not set, turned into a literal that never resolves again.
+        $envKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+        $userPath = [string]$envKey.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+        $kind = if ($envKey.GetValueNames() -contains 'Path') { $envKey.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
         $rest = @($userPath -split ';' | Where-Object { $_ -and $_ -ne $bin })
-        [Environment]::SetEnvironmentVariable('Path', ((@($bin) + $rest) -join ';'), 'User')
+        $envKey.SetValue('Path', ((@($bin) + $rest) -join ';'), $kind)
+        $envKey.Close()
+        # A registry write alone is not announced, and Explorer would hand new terminals the old
+        # PATH until the next sign-in. Setting (then removing) a user variable through .NET sends
+        # the WM_SETTINGCHANGE broadcast that makes it re-read the environment.
+        [Environment]::SetEnvironmentVariable('CFUCLI_PATH_REFRESH', '1', 'User')
+        [Environment]::SetEnvironmentVariable('CFUCLI_PATH_REFRESH', $null, 'User')
         # This script runs inside the caller's own session, so it can fix that session too.
         $env:Path = (@($bin) + @($env:Path -split ';' | Where-Object { $_ -and $_ -ne $bin })) -join ';'
         Say "$bin is first on your PATH"
