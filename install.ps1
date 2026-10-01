@@ -24,7 +24,9 @@
 #
 # CFUCLI_HOME overrides the folder, which is how this script is tested without touching a real
 # install. CFUCLI_NO_PATH=1 leaves the user PATH alone. CFUCLI_RELEASE points at a different
-# release folder (a local test server) instead of the latest GitHub release.
+# release folder (a local test server) instead of the latest GitHub release. CFUCLI_EXE installs that
+# local cfucli.exe instead of downloading one - "cfucli install" sets it, which is how an exe that
+# was downloaded and double-clicked installs itself (the window offers it on F6).
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -76,6 +78,15 @@
     $tmp = Join-Path $home_ ('.download-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
     try {
+        if ($env:CFUCLI_EXE) {
+            # "cfucli install": the exe someone downloaded and double-clicked installs itself, so
+            # there is nothing to download. Its jar is checked by the exe itself, against the
+            # sha256 it carries, the first time it runs.
+            if (-not (Test-Path $env:CFUCLI_EXE)) { throw "CFUCLI_EXE names $env:CFUCLI_EXE, which does not exist" }
+            $version = 'this exe'
+            Say "installing $env:CFUCLI_EXE"
+            Copy-Item $env:CFUCLI_EXE (Join-Path $tmp 'cfucli.exe')
+        } else {
         Fetch "$release/version.txt" (Join-Path $tmp 'version.txt')
         $version = (Get-Content (Join-Path $tmp 'version.txt') -Raw).Trim()
         if ($version -notmatch '^[0-9A-Za-z._-]+$') { throw "unexpected version string '$version'" }
@@ -92,6 +103,7 @@
             $got = (Get-FileHash -Algorithm SHA256 (Join-Path $tmp $f)).Hash.ToLower()
             if (-not $want) { throw "SHA256SUMS has no entry for $f" }
             if ($want -ne $got) { throw "$f failed its checksum - nothing was installed" }
+        }
         }
 
         # A running exe cannot be overwritten or deleted, but it can be renamed - and `cfucli update`
