@@ -50,7 +50,9 @@ main() {
 
     mkdir -p "$bin" "$versions"
     local tmp; tmp="$(mktemp -d "$home_/.download-XXXXXX")"
-    trap 'rm -rf "$tmp"' EXIT
+    # The path is put into the trap now, not looked up at exit: tmp is local to main, which has
+    # returned by then, and under set -u reading it fails and leaves the download folder behind.
+    trap "rm -rf '$tmp'" EXIT
 
     fetch "$release/version.txt" "$tmp/version.txt"
     local version; version="$(tr -d '[:space:]' < "$tmp/version.txt")"
