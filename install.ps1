@@ -6,19 +6,17 @@
 #
 #     powershell -c "irm https://cfucli.github.io/install.ps1 | iex"
 #
-# No administrator rights, and nothing needs to be installed first - a private Java runtime is
-# fetched into the cfucli folder if one is not already there. Everything lives under
-# %USERPROFILE%\cfucli:
-#     versions\<version>\   cfucli.jar, cfucli-app.jar and that release's two launchers
-#     runtime\              the Java runtime cfucli runs on
-#     bin\                  cfucli.exe and cfucliapp.exe with their .jrc files, on your user PATH
-# The launchers are jr (github.com/littlejlib/jr) branded with the cfucli icon: the JVM runs inside
-# the named process, and an AOT cache beside the jar makes every start faster. Each release goes
-# into its own versions folder and the launchers are repointed, so a jar that is in use is never
-# overwritten - Windows cannot overwrite an open file, and a running cfucli holds its jar open. A
-# launcher that is running while it is replaced (cfucli update runs FROM cfucli.exe) is renamed
-# aside instead, which Windows allows, and swept on a later run. Your settings.toml (the relay
-# credentials) is never touched.
+# No administrator rights, and nothing needs to be installed first. Since 0.4 cfucli.exe and
+# cfucliapp.exe are each a single file (jr, github.com/jarrunner/jr, built with its config baked
+# in): on first run each fetches its own jar from the GitHub release it was built for, checked
+# against the sha256 it carries, and a Java runtime if none is found. So this script only puts the
+# two exes in %USERPROFILE%\cfucli\bin, puts that folder on your user PATH, adds shortcuts, and
+# warms them up. A launcher that is running while it is replaced (cfucli update runs FROM
+# cfucli.exe) is renamed aside instead, which Windows allows, and swept on a later run. Your
+# settings.toml (the relay credentials) is never touched.
+#
+# Updating later: run this line again, `cfucli update`, or `cfucli -Xjr:update` (replaces just
+# that exe from https://cfucli.github.io/update/cfucli.json).
 #
 # This is ONE script on purpose: it runs through Invoke-Expression, which execution policy does not
 # apply to, and launching any other .ps1 from here would be subject to that policy again.
@@ -33,15 +31,12 @@
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
     $release = if ($env:CFUCLI_RELEASE) { $env:CFUCLI_RELEASE } else { 'https://github.com/cfucli/cfucli/releases/latest/download' }
-    $jre     = 'https://api.adoptium.net/v3/binary/latest/25/ga/windows/x64/jre/hotspot/normal/eclipse'
     # From the profile API, not $env:USERPROFILE: that variable is set at logon and can be missing
     # from an environment rebuilt from the registry, and a null there fails the whole install.
     $userHome = [Environment]::GetFolderPath('UserProfile')
     if (-not $userHome) { $userHome = $env:USERPROFILE }
     $home_   = if ($env:CFUCLI_HOME) { $env:CFUCLI_HOME } else { Join-Path $userHome 'cfucli' }
     $bin     = Join-Path $home_ 'bin'
-    $runtime = Join-Path $home_ 'runtime'
-    $versions = Join-Path $home_ 'versions'
 
     function Say($m) { Write-Host "cfucli: $m" }
 
@@ -50,7 +45,7 @@
     # into a terminating error, and redirecting it in PowerShell does not stop that.
     # Start-Process hands the command line over verbatim, where the call operator would re-quote it.
     function Quiet([string]$exe, [string]$arguments) {
-        Start-Process -FilePath cmd.exe -ArgumentList "/d /c `"`"$exe`" $arguments >nul 2>&1`"" -Wait -NoNewWindow
+        Start-Process -FilePath cmd.exe -ArgumentList "/d /c `"`"$exe`" $arguments <nul >nul 2>&1`"" -Wait -NoNewWindow
     }
 
     # A flaky connection should cost a retry, not a half-installed tool.
@@ -61,13 +56,21 @@
         }
     }
 
+    # A folder is only deleted when nothing in it is in use: renaming fails if any file inside is
+    # open, so a rename that succeeds means the delete cannot leave a running program half removed.
+    function RemoveIfUnused($dir) {
+        if (-not (Test-Path $dir)) { return }
+        $aside = "$dir.removing-" + [Guid]::NewGuid().ToString('N').Substring(0, 8)
+        try { Rename-Item $dir $aside -ErrorAction Stop } catch { return }
+        Remove-Item -Recurse -Force $aside -ErrorAction SilentlyContinue
+    }
+
     if (-not [Environment]::Is64BitOperatingSystem) { throw 'cfucli needs 64-bit Windows.' }
-    New-Item -ItemType Directory -Force -Path $bin, $versions | Out-Null
+    New-Item -ItemType Directory -Force -Path $bin | Out-Null
     # Launchers renamed aside by an earlier run, because they were running then. Still in use now
     # means they stay for the next run; that is fine, they are not on anyone's PATH under that name.
     Get-ChildItem $bin -Filter '*.old' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-    $files = @(@('cfucli.jar', 'cfucli.jar'), @('cfucli-app-win.jar', 'cfucli-app.jar'), @('cfucli.exe', 'cfucli.exe'), @('cfucliapp.exe', 'cfucliapp.exe'))
-    $newRuntime = $false
+    $exes = @('cfucli.exe', 'cfucliapp.exe')
 
     $tmp = Join-Path $home_ ('.download-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -75,52 +78,54 @@
         Fetch "$release/version.txt" (Join-Path $tmp 'version.txt')
         $version = (Get-Content (Join-Path $tmp 'version.txt') -Raw).Trim()
         if ($version -notmatch '^[0-9A-Za-z._-]+$') { throw "unexpected version string '$version'" }
-        $target = Join-Path $versions $version
-
-        if (@($files | Where-Object { -not (Test-Path (Join-Path $target $_[1])) }).Count -eq 0) {
-            Say "version $version is already installed - repointing the launchers only"
-        } else {
-            Say "downloading version $version"
-            Fetch "$release/SHA256SUMS" (Join-Path $tmp 'SHA256SUMS')
-            foreach ($f in $files) { Fetch "$release/$($f[0])" (Join-Path $tmp $f[1]) }
-            $sums = @{}
-            foreach ($line in Get-Content (Join-Path $tmp 'SHA256SUMS')) {
-                $p = $line -split '\s+', 2
-                if ($p.Count -eq 2) { $sums[$p[1].Trim().TrimStart('*')] = $p[0].ToLower() }
-            }
-            foreach ($f in $files) {
-                $want = $sums[$f[0]]
-                $got = (Get-FileHash -Algorithm SHA256 (Join-Path $tmp $f[1])).Hash.ToLower()
-                if (-not $want) { throw "SHA256SUMS has no entry for $($f[0])" }
-                if ($want -ne $got) { throw "$($f[0]) failed its checksum - nothing was installed" }
-            }
-            New-Item -ItemType Directory -Force -Path $target | Out-Null
-            foreach ($f in $files) { Move-Item -Force (Join-Path $tmp $f[1]) $target }
-            Copy-Item (Join-Path $tmp 'version.txt') $target
-            Say "verified and unpacked into $target"
+        Say "downloading version $version"
+        Fetch "$release/SHA256SUMS" (Join-Path $tmp 'SHA256SUMS')
+        foreach ($f in $exes) { Fetch "$release/$f" (Join-Path $tmp $f) }
+        $sums = @{}
+        foreach ($line in Get-Content (Join-Path $tmp 'SHA256SUMS')) {
+            $p = $line -split '\s+', 2
+            if ($p.Count -eq 2) { $sums[$p[1].Trim().TrimStart('*')] = $p[0].ToLower() }
+        }
+        foreach ($f in $exes) {
+            $want = $sums[$f]
+            $got = (Get-FileHash -Algorithm SHA256 (Join-Path $tmp $f)).Hash.ToLower()
+            if (-not $want) { throw "SHA256SUMS has no entry for $f" }
+            if ($want -ne $got) { throw "$f failed its checksum - nothing was installed" }
         }
 
-        $java = Join-Path $runtime 'bin\java.exe'
-        if (-not (Test-Path $java)) {
-            Say 'downloading a Java 25 runtime (once; about 50 MB)'
-            $zip = Join-Path $tmp 'jre.zip'
-            Fetch $jre $zip
-            $unz = Join-Path $tmp 'jre'
-            Expand-Archive -Path $zip -DestinationPath $unz -Force
-            $root = Get-ChildItem $unz -Directory | Select-Object -First 1
-            if (-not $root -or -not (Test-Path (Join-Path $root.FullName 'bin\java.exe'))) { throw 'the Java runtime archive did not contain bin\java.exe' }
-            if (Test-Path $runtime) { Remove-Item -Recurse -Force $runtime }
-            Move-Item $root.FullName $runtime
-            $newRuntime = $true
+        # A running exe cannot be overwritten or deleted, but it can be renamed - and `cfucli update`
+        # is itself running from bin\cfucli.exe - so a busy one is moved aside to <name>.<ticks>.old,
+        # off everyone's PATH, and swept by the next run.
+        foreach ($exe in $exes) {
+            $dst = Join-Path $bin $exe
+            if (Test-Path $dst) {
+                try { Remove-Item -Force $dst -ErrorAction Stop }
+                catch { Rename-Item $dst "$exe.$([DateTime]::UtcNow.Ticks).old" }
+            }
+            Move-Item (Join-Path $tmp $exe) $dst
         }
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
+    $cli = Join-Path $bin 'cfucli.exe'
+    Say "verified and installed into $bin"
+
+    # Warm up now rather than on the first real command: the exe fetches its jar (about 75 MB),
+    # a Java runtime if there is none (once, about 50 MB), and builds its AOT cache. -Xjr:yes so
+    # jr does not stop to ask about the runtime; stdin from nul so nothing can wait on a prompt.
+    # Through cmd, deliberately: the JVM reports its AOT recording on stderr, and in Windows
+    # PowerShell with ErrorActionPreference=Stop ANY stderr from a native program is a terminating
+    # error, even redirected.
+    Say 'fetching the cfucli jars (and a Java runtime if needed) - a minute on first install'
+    Quiet $cli '-Xjr:yes -V'
+    # The window's jar too, so the first "cfucli console" does not wait on a download. --version
+    # answers before any window opens; aot=false so this run does not become the AOT training run
+    # (the cache is built from the first real window instead).
+    Quiet (Join-Path $bin 'cfucliapp.exe') '-Xjr:yes -Xjr:aot=false --version'
 
     # Nodes still running the previous version would keep answering with the old code - measured:
     # a jar replaced under a running node fails later with NoSuchMethodError, not at once.
-    $cli = Join-Path $target 'cfucli.jar'
-    # Nodes keep their state under the user's own cfucli folder whatever folder the jars were
+    # Nodes keep their state under the user's own cfucli folder whatever folder the exes were
     # installed into - that is where cfucli itself looks (user.home), not CFUCLI_HOME.
     $state = if ($env:CFUCLI_STATE) { $env:CFUCLI_STATE } else { Join-Path $userHome 'cfucli' }
     $runDir = Join-Path $state 'run'
@@ -130,36 +135,17 @@
             $nodePid = try { (Get-Content $f.FullName -Raw | ConvertFrom-Json).pid } catch { $null }
             # A port file outlives a node that was killed outright; only a live process is stopped.
             if (-not $nodePid -or -not (Get-Process -Id $nodePid -ErrorAction SilentlyContinue)) { continue }
-            Quiet $java "-jar `"$cli`" node stop --node $node"
+            Quiet $cli "node stop --node $node"
             Say "stopped node '$node' so it restarts on the new version"
         }
     }
 
-    # An AOT cache is only valid for the JVM that wrote it; a new runtime means every cache is stale.
-    if ($newRuntime) { Get-ChildItem $versions -Recurse -Filter '*.aot' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue }
-
-    # The launchers. A running exe cannot be overwritten or deleted, but it can be renamed - and
-    # `cfucli update` is itself running from bin\cfucli.exe - so a busy one is moved aside to
-    # <name>.<ticks>.old, off everyone's PATH, and swept by the next run.
-    foreach ($exe in 'cfucli.exe', 'cfucliapp.exe') {
-        $dst = Join-Path $bin $exe
-        if (Test-Path $dst) {
-            try { Remove-Item -Force $dst -ErrorAction Stop }
-            catch { Rename-Item $dst "$exe.$([DateTime]::UtcNow.Ticks).old" }
-        }
-        Copy-Item (Join-Path $target $exe) $dst
-    }
-    # java.home pins the bundled runtime, so whatever Java is (or is not) on the PATH never matters,
-    # and java.autoinstall=false means jr never stops to ask about downloading one. Quoted jar
-    # paths, because a user folder can have a space in it. Rewritten on every run; jr reads its
-    # .jrc once at start, so a launcher that is running is not disturbed by this.
-    $common = @("java.home=$runtime", 'aot=true', 'jvm=dll', 'java.autoinstall=false')
-    Set-Content -Encoding ASCII (Join-Path $bin 'cfucli.jrc') (@('# Written by the cfucli installer; rewritten on every install and update.',
-        'vm.args=--enable-native-access=ALL-UNNAMED -Xlog:aot*=off -XX:+DisplayVMOutputToStderr',
-        "java.args=-jar `"$cli`"") + $common)
-    Set-Content -Encoding ASCII (Join-Path $bin 'cfucliapp.jrc') (@('# Written by the cfucli installer; rewritten on every install and update.',
-        'vm.args=--enable-native-access=ALL-UNNAMED -Xlog:aot*=off',
-        "java.args=-jar `"$(Join-Path $target 'cfucli-app.jar')`"") + $common)
+    # What installs before 0.4 left here: .jrc files (the exes now ignore any config beside them),
+    # per-version jar folders and a private runtime (the exes keep their own jar and Java now).
+    # Removed only where nothing is still using them; a later run finishes the job.
+    Get-ChildItem $bin -Filter '*.jrc' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    RemoveIfUnused (Join-Path $home_ 'versions')
+    RemoveIfUnused (Join-Path $home_ 'runtime')
     # The .cmd launchers of 0.2.x, superseded - .exe wins on the PATH anyway, but a stale launcher
     # is a trap for whoever calls it by name. (If this run came from one, cmd.exe may say "The batch
     # file cannot be found" once, as it exits; that is cosmetic.)
@@ -183,12 +169,6 @@
         $lnk.Save()
     }
     Say "shortcut on the desktop and in the Start Menu"
-
-    # Build the AOT cache now rather than on the first real command - it costs a few seconds once.
-    # Through cmd, deliberately: the JVM reports its AOT recording on stderr, and in Windows
-    # PowerShell with ErrorActionPreference=Stop ANY stderr from a native program is a terminating
-    # error, even redirected - measured, it aborted this installer here with the cache half written.
-    Quiet (Join-Path $bin 'cfucli.exe') '-V'
 
     if ($env:CFUCLI_NO_PATH -ne '1') {
         # FIRST in the user PATH, so this install wins over an older copy - a v0.1 zip folder, say -
@@ -227,10 +207,6 @@
             $others | ForEach-Object { Write-Host "    $_" }
         }
     }
-
-    # Keep the current version and the one before it; anything older goes, unless it is in use.
-    Get-ChildItem $versions -Directory | Sort-Object LastWriteTime -Descending | Select-Object -Skip 2 |
-        ForEach-Object { Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue }
 
     Say "installed $version"
     Write-Host ''
