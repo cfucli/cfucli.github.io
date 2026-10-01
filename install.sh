@@ -6,9 +6,10 @@
 # No administrator rights (no sudo), and nothing needs to be installed first - a private Java
 # runtime is fetched into the cfucli folder if one is not already there. Everything lives under
 # ~/cfucli:
-#     versions/<version>/   cfucli.jar and cfucli-app.jar for that release
+#     versions/<version>/   cfucli.jar for that release - since 0.4 the cli and the window in one jar
 #     runtime/              the Java runtime cfucli runs on
-#     bin/                  the cfucli and cfucliapp launchers, added to your PATH
+#     bin/                  the cfucli launcher, added to your PATH (with no arguments it opens
+#                           the window; cfucli.app in ~/Applications does the same)
 # Each release goes into its own versions folder and the launchers are repointed, so a jar that is
 # in use is never overwritten. Your settings.toml (the relay credentials) is never touched.
 #
@@ -34,14 +35,14 @@ main() {
 
     sha256() { if command -v shasum >/dev/null; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi; }
 
-    local os arch appjar jre
+    local os arch jar jre
     os="$(uname -s)"
     case "$os" in
         Darwin)
             # Ask the hardware, not the shell: a Terminal running under Rosetta reports x86_64 on
             # Apple Silicon, and would get the Intel build.
-            if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = "1" ]; then arch=aarch64; appjar=cfucli-app-mac-aarch64.jar
-            else arch=x64; appjar=cfucli-app-mac.jar; fi
+            if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = "1" ]; then arch=aarch64; jar=cfucli-mac-aarch64.jar
+            else arch=x64; jar=cfucli-mac.jar; fi
             jre="https://api.adoptium.net/v3/binary/latest/25/ga/mac/$arch/jre/hotspot/normal/eclipse" ;;
         Linux) die "Linux is not packaged yet - build from https://github.com/cfucli/cfucli with: mvn -Plinux package" ;;
         *) die "unsupported system '$os' - on Windows use: irm https://cfucli.github.io/install.ps1 | iex" ;;
@@ -61,18 +62,14 @@ main() {
     else
         say "downloading version $version"
         fetch "$release/SHA256SUMS" "$tmp/SHA256SUMS"
-        fetch "$release/cfucli.jar" "$tmp/cfucli.jar"
-        fetch "$release/$appjar" "$tmp/cfucli-app.jar"
-        local name local_name want got
-        for pair in "cfucli.jar:cfucli.jar" "$appjar:cfucli-app.jar"; do
-            name="${pair%%:*}"; local_name="${pair##*:}"
-            want="$(awk -v f="$name" '{ n = $2; sub(/^\*/, "", n); if (n == f) print tolower($1) }' "$tmp/SHA256SUMS")"
-            [ -n "$want" ] || die "SHA256SUMS has no entry for $name"
-            got="$(sha256 "$tmp/$local_name")"
-            [ "$want" = "$got" ] || die "$name failed its checksum - nothing was installed"
-        done
+        fetch "$release/$jar" "$tmp/cfucli.jar"
+        local want got
+        want="$(awk -v f="$jar" '{ n = $2; sub(/^\*/, "", n); if (n == f) print tolower($1) }' "$tmp/SHA256SUMS")"
+        [ -n "$want" ] || die "SHA256SUMS has no entry for $jar"
+        got="$(sha256 "$tmp/cfucli.jar")"
+        [ "$want" = "$got" ] || die "$jar failed its checksum - nothing was installed"
         mkdir -p "$target"
-        mv "$tmp/cfucli.jar" "$tmp/cfucli-app.jar" "$tmp/version.txt" "$target/"
+        mv "$tmp/cfucli.jar" "$tmp/version.txt" "$target/"
         say "verified and unpacked into $target"
     fi
 
@@ -108,9 +105,8 @@ main() {
     fi
 
     local vm="--enable-native-access=ALL-UNNAMED -Xlog:aot*=off -XX:+DisplayVMOutputToStderr"
-    printf '#!/bin/sh\nexec "%s" %s -jar "%s" "$@"\n' "$java" "$vm" "$cli" > "$bin/cfucli"
-    printf '#!/bin/sh\nexec "%s" --enable-native-access=ALL-UNNAMED -jar "%s" "$@"\n' "$java" "$target/cfucli-app.jar" > "$bin/cfucliapp"
-    chmod +x "$bin/cfucli" "$bin/cfucliapp"
+    # The window's own launcher until 0.3; "cfucli" with no arguments is the window now.
+    rm -f "$bin/cfucliapp"
 
     # A real app bundle, so the window is in Spotlight and Launchpad and can be kept in the Dock,
     # plus a link to it on the Desktop. Rebuilt on every run, so it always opens the version just
@@ -153,11 +149,13 @@ PLIST
             fi
         fi
     fi
-    printf '#!/bin/sh\nexec "%s" --enable-native-access=ALL-UNNAMED -Xdock:name=cfucli %s -jar "%s" "$@"\n' \
-        "$java" "$dockicon" "$target/cfucli-app.jar" > "$bin/cfucliapp"
-    printf '#!/bin/sh\nexec "%s" --enable-native-access=ALL-UNNAMED -Xdock:name=cfucli %s -jar "%s" "$@"\n' \
-        "$java" "$dockicon" "$target/cfucli-app.jar" > "$app/Contents/MacOS/cfucli"
-    chmod +x "$app/Contents/MacOS/cfucli"
+    # One launcher for both: the Dock name and icon only take effect if the run opens the window
+    # (no arguments, or "cfucli window"), and the cli's runs never touch the Dock.
+    printf '#!/bin/sh\nexec "%s" %s -Xdock:name=cfucli %s -jar "%s" "$@"\n' \
+        "$java" "$vm" "$dockicon" "$cli" > "$bin/cfucli"
+    printf '#!/bin/sh\nexec "%s" %s -Xdock:name=cfucli %s -jar "%s"\n' \
+        "$java" "$vm" "$dockicon" "$cli" > "$app/Contents/MacOS/cfucli"
+    chmod +x "$bin/cfucli" "$app/Contents/MacOS/cfucli"
     touch "$app"   # Finder caches bundle icons; a new mtime makes it look again
     mkdir -p "$desk"; ln -sfn "$app" "$desk/cfucli"
     say "cfucli.app in $apps, and on the Desktop"

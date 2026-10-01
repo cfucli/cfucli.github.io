@@ -6,14 +6,15 @@
 #
 #     powershell -c "irm https://cfucli.github.io/install.ps1 | iex"
 #
-# No administrator rights, and nothing needs to be installed first. Since 0.4 cfucli.exe and
-# cfucliapp.exe are each a single file (jr, github.com/jarrunner/jr, built with its config baked
-# in): on first run each fetches its own jar from the GitHub release it was built for, checked
-# against the sha256 it carries, and a Java runtime if none is found. So this script only puts the
-# two exes in %USERPROFILE%\cfucli\bin, puts that folder on your user PATH, adds shortcuts, and
-# warms them up. A launcher that is running while it is replaced (cfucli update runs FROM
-# cfucli.exe) is renamed aside instead, which Windows allows, and swept on a later run. Your
-# settings.toml (the relay credentials) is never touched.
+# No administrator rights, and nothing needs to be installed first. Since 0.4 cfucli.exe is ONE
+# single file (jr, github.com/jarrunner/jr, built with its config baked in) that is both the
+# command line and, run with no arguments, the window: on first run it fetches its jar from the
+# GitHub release it was built for, checked against the sha256 it carries, and a Java runtime if
+# none is found. So this script only puts that exe in %USERPROFILE%\cfucli\bin, puts that folder on
+# your user PATH, adds shortcuts, and warms it up. A launcher that is running while it is replaced
+# (cfucli update runs FROM cfucli.exe) is renamed aside instead, which Windows allows, and swept on
+# a later run. The cfucliapp.exe of 0.3 is removed the same way. Your settings.toml (the relay
+# credentials) is never touched.
 #
 # Updating later: run this line again, `cfucli update`, or `cfucli -Xjr:update` (replaces just
 # that exe from https://cfucli.github.io/update/cfucli.json).
@@ -70,7 +71,7 @@
     # Launchers renamed aside by an earlier run, because they were running then. Still in use now
     # means they stay for the next run; that is fine, they are not on anyone's PATH under that name.
     Get-ChildItem $bin -Filter '*.old' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-    $exes = @('cfucli.exe', 'cfucliapp.exe')
+    $exes = @('cfucli.exe')
 
     $tmp = Join-Path $home_ ('.download-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -104,24 +105,29 @@
             }
             Move-Item (Join-Path $tmp $exe) $dst
         }
+        # The window's own exe until 0.3; cfucli.exe with no arguments is the window now. Removed,
+        # or moved aside the same way if it is running (a window or the tray from the old install).
+        $oldApp = Join-Path $bin 'cfucliapp.exe'
+        if (Test-Path $oldApp) {
+            try { Remove-Item -Force $oldApp -ErrorAction Stop }
+            catch { Rename-Item $oldApp "cfucliapp.exe.$([DateTime]::UtcNow.Ticks).old" }
+            Say 'removed cfucliapp.exe - cfucli.exe opens the window now'
+        }
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
     $cli = Join-Path $bin 'cfucli.exe'
     Say "verified and installed into $bin"
 
-    # Warm up now rather than on the first real command: the exe fetches its jar (about 75 MB),
-    # a Java runtime if there is none (once, about 50 MB), and builds its AOT cache. -Xjr:yes so
-    # jr does not stop to ask about the runtime; stdin from nul so nothing can wait on a prompt.
-    # Through cmd, deliberately: the JVM reports its AOT recording on stderr, and in Windows
-    # PowerShell with ErrorActionPreference=Stop ANY stderr from a native program is a terminating
-    # error, even redirected.
-    Say 'fetching the cfucli jars (and a Java runtime if needed) - a minute on first install'
-    Quiet $cli '-Xjr:yes -V'
-    # The window's jar too, so the first "cfucli console" does not wait on a download. --version
-    # answers before any window opens; aot=false so this run does not become the AOT training run
-    # (the cache is built from the first real window instead).
-    Quiet (Join-Path $bin 'cfucliapp.exe') '-Xjr:yes -Xjr:aot=false --version'
+    # Warm up now rather than on the first real command: the exe fetches its jar (about 87 MB) and
+    # a Java runtime if there is none (once, about 50 MB). -Xjr:yes so jr does not stop to ask
+    # about the runtime; stdin from nul so nothing can wait on a prompt. -Xjr:aot=false so this
+    # trivial run does not become the AOT training run: the one jar serves the cli and the window,
+    # and a cache trained by printing a version carries neither, so the first real use trains it.
+    # Through cmd, deliberately: in Windows PowerShell with ErrorActionPreference=Stop ANY stderr
+    # from a native program is a terminating error, even redirected.
+    Say 'fetching the cfucli jar (and a Java runtime if needed) - a minute on first install'
+    Quiet $cli '-Xjr:yes -Xjr:aot=false -V'
 
     # Nodes still running the previous version would keep answering with the old code - measured:
     # a jar replaced under a running node fails later with NoSuchMethodError, not at once.
@@ -152,9 +158,10 @@
     foreach ($old in 'cfucli.cmd', 'cfucliapp.cmd') { Remove-Item -Force (Join-Path $bin $old) -ErrorAction SilentlyContinue }
     Remove-Item -Force (Join-Path $home_ 'cfucli.ico') -ErrorAction SilentlyContinue   # 0.2.x shortcut icon; the exe carries it now
 
-    # Desktop and Start Menu shortcuts to the window, pointing at cfucliapp.exe itself - its own
-    # embedded icon, its own process name. Rewritten on every run.
-    $app = Join-Path $bin 'cfucliapp.exe'
+    # Desktop and Start Menu shortcuts to the window: cfucli.exe with no arguments, its own embedded
+    # icon, its own process name. Rewritten on every run, which is also what repoints the shortcuts
+    # an older install aimed at cfucliapp.exe.
+    $app = $cli
     $shell = New-Object -ComObject WScript.Shell
     $places = @([Environment]::GetFolderPath('Desktop'), (Join-Path ([Environment]::GetFolderPath('Programs')) 'cfucli'))
     if ($env:CFUCLI_NO_PATH -eq '1') { $places = @((Join-Path $home_ 'shortcuts')) }   # tests leave the real desktop alone
