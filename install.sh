@@ -119,6 +119,18 @@ main() {
     if [ "${CFUCLI_NO_PATH:-}" = "1" ]; then apps="$home_/shortcuts"; desk="$home_/shortcuts"; fi   # tests leave the real ones alone
     local app="$apps/cfucli.app"
     rm -rf "$app"; mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    # The bundle's executable is a shell script, and macOS cannot read an architecture off a
+    # script, so on Apple Silicon it ran that /bin/sh under Rosetta. The JVM it execs is arm64-only
+    # and runs native anyway, but the x86_64 PREFERENCE is inherited: every shell cfucli started
+    # was translated, and so was every universal binary started from one. Measured 2026-10-03 on
+    # an M3: the shared shell reported proc_translated=1, and a browser launched from it ran as
+    # x86_64 and sat in dyld translating its framework. Both halves are needed: the plist key
+    # makes the launch native, and `arch -arm64` pins the preference for everything below it.
+    local archkey="" archrun=""
+    if [ "$arch" = "aarch64" ]; then
+        archkey="  <key>LSArchitecturePriority</key><array><string>arm64</string><string>x86_64</string></array>"
+        archrun="/usr/bin/arch -arm64 "
+    fi
     cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -132,6 +144,7 @@ main() {
   <key>CFBundleExecutable</key><string>cfucli</string>
   <key>CFBundleIconFile</key><string>cfucli</string>
   <key>NSHighResolutionCapable</key><true/>
+$archkey
 </dict></plist>
 PLIST
     local icns="$app/Contents/Resources/cfucli.icns" dockicon=""
@@ -153,10 +166,10 @@ PLIST
     fi
     # One launcher for both: the Dock name and icon only take effect if the run opens the window
     # (no arguments, or "cfucli window"), and the cli's runs never touch the Dock.
-    printf '#!/bin/sh\nexec "%s" %s -Xdock:name=cfucli %s -jar "%s" "$@"\n' \
-        "$java" "$vm" "$dockicon" "$cli" > "$bin/cfucli"
-    printf '#!/bin/sh\nexec "%s" %s -Xdock:name=cfucli %s -jar "%s"\n' \
-        "$java" "$vm" "$dockicon" "$cli" > "$app/Contents/MacOS/cfucli"
+    printf '#!/bin/sh\nexec %s"%s" %s -Xdock:name=cfucli %s -jar "%s" "$@"\n' \
+        "$archrun" "$java" "$vm" "$dockicon" "$cli" > "$bin/cfucli"
+    printf '#!/bin/sh\nexec %s"%s" %s -Xdock:name=cfucli %s -jar "%s"\n' \
+        "$archrun" "$java" "$vm" "$dockicon" "$cli" > "$app/Contents/MacOS/cfucli"
     chmod +x "$bin/cfucli" "$app/Contents/MacOS/cfucli"
     touch "$app"   # Finder caches bundle icons; a new mtime makes it look again
     mkdir -p "$desk"; ln -sfn "$app" "$desk/cfucli"
