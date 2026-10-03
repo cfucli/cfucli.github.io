@@ -2,9 +2,18 @@
   "format" : 1,
   "app" : "io.github.cfucli:cfucli",
   "channels" : {
-    "stable" : "0.4.2"
+    "stable" : "0.4.3"
   },
   "releases" : [ {
+    "version" : "0.4.3",
+    "released" : "2026-10-03T03:15:48Z",
+    "exe" : {
+      "windows-x86_64" : {
+        "sha256" : "397bf51eb55157aa5af6f7dc0d6eb5060e68c4bc947d7c06870f36867ae01135",
+        "urls" : [ "https://github.com/cfucli/cfucli/releases/download/v0.4.3/cfucli.exe" ]
+      }
+    }
+  }, {
     "version" : "0.4.2",
     "released" : "2026-10-03T01:13:19Z",
     "exe" : {
