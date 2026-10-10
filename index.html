@@ -115,6 +115,10 @@
     <pre>cfucli relay set --from relay.toml    <span class="c"># the rendezvous file you were given</span>
 cfucli available on --as yourname     <span class="c"># so others can ask to connect</span></pre>
     <p class="note">Version 0.3 &mdash; Apple Silicon and Intel Macs, 64-bit Windows. Everything goes into a <code>cfucli</code> folder in your home folder; <code>cfucli</code> and <code>cfucliapp</code> land on your PATH (on Windows as <code>cfucli.exe</code> and <code>cfucliapp.exe</code>, with the seal as their icon), with a shortcut on the desktop. Update any time with <code>cfucli update</code>.</p>
+    <p><strong>Trying the 0.5 beta</strong> (Windows): one file, no installer script. In a Command Prompt or PowerShell:</p>
+    <pre>curl.exe -fLo cfucli.exe https://github.com/cfucli/cfucli/releases/download/v0.5.0-beta.1/cfucli.exe
+.\cfucli.exe install</pre>
+    <p class="note" style="margin-bottom:18px">It goes into your user's Programs folder, on the PATH, with Start Menu and Desktop shortcuts, and takes the place of an earlier install (your settings are kept). Update with <code>cfucli update</code>; remove with <code>cfucli install --uninstall</code>. Installs of 0.4 are not offered the beta.</p>
     <div class="actions">
       <a class="btn btn-ghost" href="https://github.com/cfucli/cfucli">Source on GitHub</a>
       <a class="btn btn-ghost" href="https://github.com/cfucli/cfucli/releases">All releases</a>
