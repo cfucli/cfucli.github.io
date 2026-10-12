@@ -1,12 +1,19 @@
-# cfucli installer for Windows. Install and update are the same command:
+# cfucli installer for Windows, kept for the copies that still call it. Since 0.5 cfucli installs
+# itself, and the line to give people is the one on https://cfucli.github.io:
 #
-#     irm https://cfucli.github.io/install.ps1 | iex
+#     curl.exe -fLo cfucli.exe https://github.com/cfucli/cfucli/releases/latest/download/cfucli.exe
+#     .\cfucli.exe install
 #
-# From a cmd.exe window rather than PowerShell:
+# This script stays because 0.4.x calls it: its `cfucli update` runs `irm .../install.ps1 | iex`,
+# and its `cfucli install` runs it with CFUCLI_EXE set. So it has two paths:
 #
-#     powershell -c "irm https://cfucli.github.io/install.ps1 | iex"
+#   - downloading (no CFUCLI_EXE): fetch the latest cfucli.exe, check it against the release's
+#     SHA256SUMS, and run its own `install`. That puts it in %LOCALAPPDATA%\Programs\cfucli, on the
+#     PATH, with shortcuts, and takes away 0.4's %USERPROFILE%\cfucli\bin. Settings are kept.
+#   - CFUCLI_EXE: a 0.4.x exe installing itself. That exe's own `install` is this script, so it gets
+#     0.4's install, below, unchanged.
 #
-# No administrator rights, and nothing needs to be installed first. Since 0.4 cfucli.exe is ONE
+# What follows the first block is 0.4's install, as it was. Since 0.4 cfucli.exe is ONE
 # single file (jr, github.com/jarrunner/jr, built with its config baked in) that is both the
 # command line and, run with no arguments, the window: on first run it fetches its jar from the
 # GitHub release it was built for, checked against the sha256 it carries, and a Java runtime if
@@ -69,6 +76,42 @@
     }
 
     if (-not [Environment]::Is64BitOperatingSystem) { throw 'cfucli needs 64-bit Windows.' }
+
+    if (-not $env:CFUCLI_EXE) {
+        # Since 0.5: the exe installs itself. Downloaded to a temporary folder, checked, and run
+        # from there; its install copies it to where it belongs.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cfucli-install-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            Fetch "$release/version.txt" (Join-Path $tmp 'version.txt')
+            $version = (Get-Content (Join-Path $tmp 'version.txt') -Raw).Trim()
+            if ($version -notmatch '^[0-9A-Za-z._-]+$') { throw "unexpected version string '$version'" }
+            Say "downloading version $version"
+            Fetch "$release/SHA256SUMS" (Join-Path $tmp 'SHA256SUMS')
+            $exe = Join-Path $tmp 'cfucli.exe'
+            Fetch "$release/cfucli.exe" $exe
+            $want = $null
+            foreach ($line in Get-Content (Join-Path $tmp 'SHA256SUMS')) {
+                $p = $line -split '\s+', 2
+                if ($p.Count -eq 2 -and $p[1].Trim().TrimStart('*') -eq 'cfucli.exe') { $want = $p[0].ToLower() }
+            }
+            if (-not $want) { throw 'SHA256SUMS has no entry for cfucli.exe' }
+            if ($want -ne (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()) { throw 'cfucli.exe failed its checksum - nothing was installed' }
+            Say 'verified - installing (the first run fetches the cfucli jar, and Java if needed)'
+            # Its messages go straight to the console. Not through PowerShell, which under
+            # ErrorActionPreference=Stop would turn a line on stderr into a terminating error.
+            $ErrorActionPreference = 'Continue'
+            $p = Start-Process -FilePath $exe -ArgumentList '-Xjr:yes install' -Wait -NoNewWindow -PassThru
+            if ($p.ExitCode -ne 0) { throw "cfucli install failed (exit $($p.ExitCode))" }
+            # The new exe is in Programs now. In this session, put it ahead of 0.4's folder.
+            $programs = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\cfucli'
+            $env:Path = (@($programs) + @($env:Path -split ';' | Where-Object { $_ -and $_ -ne $programs -and $_ -ne $bin })) -join ';'
+        } finally {
+            Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        }
+        return
+    }
+
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
     # Launchers renamed aside by an earlier run, because they were running then. Still in use now
     # means they stay for the next run; that is fine, they are not on anyone's PATH under that name.
