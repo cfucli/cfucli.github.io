@@ -105,22 +105,16 @@
 
   <section>
     <h2>Get it</h2>
-    <p>One line installs it, and the same line updates it. No administrator rights, and nothing to install first &mdash; it brings its own Java.</p>
-    <p><strong>macOS</strong>, in Terminal:</p>
-    <pre>curl -fsSL https://cfucli.github.io/install.sh | bash</pre>
-    <p><strong>Windows</strong>, in PowerShell:</p>
-    <pre>irm https://cfucli.github.io/install.ps1 | iex</pre>
-    <p class="note" style="margin-bottom:18px">From a Command Prompt instead: <code>powershell -c "irm https://cfucli.github.io/install.ps1 | iex"</code></p>
+    <p>One file, which installs itself. No administrator rights, and nothing to install first &mdash; it fetches Java if you have none.</p>
+    <p><strong>Windows</strong>, in a Command Prompt or PowerShell:</p>
+    <pre>curl.exe -fLo cfucli.exe https://github.com/cfucli/cfucli/releases/latest/download/cfucli.exe
+.\cfucli.exe install</pre>
+    <p><strong>macOS</strong>, in Terminal (Apple silicon or Intel, picked by <code>uname -m</code>):</p>
+    <pre>curl -fLo /tmp/cfucli https://github.com/cfucli/cfucli/releases/latest/download/cfucli-macos-$(uname -m) &amp;&amp; chmod +x /tmp/cfucli &amp;&amp; /tmp/cfucli install</pre>
     <p>Then, once on each machine:</p>
     <pre>cfucli relay set --from relay.toml    <span class="c"># the rendezvous file you were given</span>
 cfucli available on --as yourname     <span class="c"># so others can ask to connect</span></pre>
-    <p class="note">Version 0.3 &mdash; Apple Silicon and Intel Macs, 64-bit Windows. Everything goes into a <code>cfucli</code> folder in your home folder; <code>cfucli</code> and <code>cfucliapp</code> land on your PATH (on Windows as <code>cfucli.exe</code> and <code>cfucliapp.exe</code>, with the seal as their icon), with a shortcut on the desktop. Update any time with <code>cfucli update</code>.</p>
-    <p><strong>Trying the 0.5 beta</strong>: one file, no installer script. On Windows, in a Command Prompt or PowerShell:</p>
-    <pre>curl.exe -fLo cfucli.exe https://github.com/cfucli/cfucli/releases/download/v0.5.0-beta.2/cfucli.exe
-.\cfucli.exe install</pre>
-    <p>On a Mac, in Terminal (Apple silicon or Intel, picked by <code>uname -m</code>):</p>
-    <pre>curl -fLo /tmp/cfucli https://github.com/cfucli/cfucli/releases/download/v0.5.0-beta.2/cfucli-macos-$(uname -m) &amp;&amp; chmod +x /tmp/cfucli &amp;&amp; /tmp/cfucli install</pre>
-    <p class="note" style="margin-bottom:18px">On Windows it goes into your user's Programs folder, on the PATH, with Start Menu and Desktop shortcuts; on a Mac, <code>cfucli.app</code> goes into your Applications folder (Launchpad, the Dock) and the <code>cfucli</code> command into <code>~/.local/bin</code>. It takes the place of an earlier install (your settings are kept), and fetches Java if you have none. Update with <code>cfucli update</code>; remove with <code>cfucli install --uninstall</code>. Installs of 0.4 are not offered the beta.</p>
+    <p class="note" style="margin-bottom:18px">Version 0.5 &mdash; 64-bit Windows, Apple silicon and Intel Macs. On Windows it goes into your user's Programs folder, on the PATH, with Start Menu and Desktop shortcuts; on a Mac, <code>cfucli.app</code> goes into your Applications folder (Launchpad, the Dock) and the <code>cfucli</code> command into <code>~/.local/bin</code>. Your settings stay in the <code>cfucli</code> folder in your home folder. Update with <code>cfucli update</code>; remove with <code>cfucli install --uninstall</code>. An install of 0.4 moves itself over on its next <code>cfucli update</code>.</p>
     <div class="actions">
       <a class="btn btn-ghost" href="https://github.com/cfucli/cfucli">Source on GitHub</a>
       <a class="btn btn-ghost" href="https://github.com/cfucli/cfucli/releases">All releases</a>
@@ -128,14 +122,14 @@ cfucli available on --as yourname     <span class="c"># so others can ask to con
   </section>
 
   <section>
-    <h2>Two programs</h2>
+    <h2>One program, two faces</h2>
     <div class="cards">
       <div class="card">
-        <h3><code>cfucliapp</code></h3>
+        <h3><code>cfucli</code> alone</h3>
         <p>The window. Share this machine's shell, or join a session someone is sharing. Also the tray manager.</p>
       </div>
       <div class="card">
-        <h3><code>cfucli</code></h3>
+        <h3><code>cfucli &lt;verb&gt;</code></h3>
         <p>The command line. Drives the same shell with exact exit codes and stdout and stderr kept apart, so an agent can use it.</p>
       </div>
     </div>
@@ -149,7 +143,7 @@ cfucli exec    --node work "dir"
 cfucli tail    --node work -n 40 -f
 
 <span class="c"># share this machine - it prints an id and a one-time password</span>
-cfucliapp --host
+cfucli window --host
 
 <span class="c"># join what someone else is sharing, then drive it</span>
 cfucli join &lt;id&gt; -p &lt;password&gt; --node far
