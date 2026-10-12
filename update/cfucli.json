@@ -2,10 +2,27 @@
   "format" : 1,
   "app" : "io.github.cfucli:cfucli",
   "channels" : {
-    "stable" : "0.5.0",
+    "stable" : "0.5.1",
     "beta" : "0.5.0-beta.3"
   },
   "releases" : [ {
+    "version" : "0.5.1",
+    "released" : "2026-10-12T13:02:17Z",
+    "exe" : {
+      "windows-x86_64" : {
+        "sha256" : "1767dd0448df8639267bd2ffb3e24aebdc45bd5efe0c07078ead6972a23c1bf7",
+        "urls" : [ "https://github.com/cfucli/cfucli/releases/download/v0.5.1/cfucli.exe" ]
+      },
+      "macos-arm64" : {
+        "sha256" : "b7403012d97ee3ffcb475976ea8518a9e19204913bd0f73fb50c4d1ade0dbbab",
+        "urls" : [ "https://github.com/cfucli/cfucli/releases/download/v0.5.1/cfucli-macos-arm64" ]
+      },
+      "macos-x86_64" : {
+        "sha256" : "4c9833644d8d45530825f47315dae1a1dac4dafba605f59f71a864a290a4d055",
+        "urls" : [ "https://github.com/cfucli/cfucli/releases/download/v0.5.1/cfucli-macos-x86_64" ]
+      }
+    }
+  }, {
     "version" : "0.5.0",
     "released" : "2026-10-12T10:44:57Z",
     "exe" : {
